@@ -64,9 +64,18 @@ DClaw 1.3.30 没有「每日任务」类接口；客户端里与任务相关的�
 
 ## 安装
 
-当前交付物是本地源码与 npm tarball，尚未发布到 npm 或 GitHub。
+源码已发布到 [GitHub](https://github.com/MYCF711/magpie-dclaw)；npm 尚未发布，用 git 源或本地目录安装。
 
-### 本地目录（推荐）
+### 从 GitHub（推荐）
+
+```bash
+magpie plugin add github:MYCF711/magpie-dclaw
+magpie plugin login dclaw
+```
+
+更新时 `magpie plugin update`；git 源跟随默认分支 `main`，改代码前请先看 [`UPDATING.md`](./UPDATING.md)。
+
+### 本地目录（改代码时）
 
 ```bash
 cd plugin
@@ -89,7 +98,7 @@ node scripts/local-install.mjs --remove
 npm pack --pack-destination ./dist
 ```
 
-将生成的 `dist/magpie-dclaw-0.1.0.tgz` 复制到 `~/.config/magpie/plugins/dist/`，按脚手架的 `plugins.json + plugins/package.json` 方式登记后运行 Magpie 自带 Bun install。**不要**直接把 tgz 路径传给 `magpie plugin add`；该命令对本地 tgz 有已知问题。
+将生成的 `dist/magpie-dclaw-0.1.1.tgz` 复制到 `~/.config/magpie/plugins/dist/`，按脚手架的 `plugins.json + plugins/package.json` 方式登记后运行 Magpie 自带 Bun install。**不要**直接把 tgz 路径传给 `magpie plugin add`；该命令对本地 tgz 有已知问题。
 
 ## 验证
 

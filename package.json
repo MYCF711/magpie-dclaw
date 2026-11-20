@@ -66,5 +66,13 @@
     "maintenance": "node scripts/check-maintenance.mjs",
     "check:actions": "node scripts/check-actions.mjs",
     "publish:npm": "node scripts/publish-npm.mjs"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/MYCF711/magpie-dclaw.git"
+  },
+  "homepage": "https://github.com/MYCF711/magpie-dclaw#readme",
+  "bugs": {
+    "url": "https://github.com/MYCF711/magpie-dclaw/issues"
   }
 }
