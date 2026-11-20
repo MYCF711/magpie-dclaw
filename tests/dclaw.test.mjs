@@ -17,6 +17,7 @@ import {
   successAuth,
   usageFromUser,
 } from "../src/dclaw.mjs"
+import { normalizeInviteCode, tokenFromSession, webLoginUrl } from "../src/web-login.mjs"
 
 const json = (body, status = 200, headers = {}) => new Response(JSON.stringify(body), {
   status,
@@ -443,4 +444,23 @@ test("自定义头全部无效时仍补 DashScope 默认头", async () => {
   await runtime.forward(async () => auth, `${BASE}/messages`, { method: "POST", body: JSON.stringify({ ...JSON.parse(nativeBody()), model: row.id }) })
   assert.equal(captured.headers.get("authorization"), "Bearer public-key")
   assert.equal(captured.headers.get("x-dashscope-wait-timeout"), "30")
+})
+
+test("网页登录：邀请码只接受字母数字，URL 按有无邀请码切换", () => {
+  assert.equal(normalizeInviteCode("019574ee24af"), "019574ee24af")
+  assert.equal(normalizeInviteCode(" bad/../x "), "")
+  assert.equal(normalizeInviteCode(""), "")
+  assert.equal(webLoginUrl("019574ee24af"), "https://www.dianclaw.cn/inviteNew?ic=019574ee24af")
+  assert.equal(webLoginUrl(""), "https://www.dianclaw.cn/login")
+  assert.equal(webLoginUrl(undefined), "https://www.dianclaw.cn/login")
+  assert.equal(webLoginUrl("abc123", "https://example.com/"), "https://example.com/inviteNew?ic=abc123")
+})
+
+test("网页登录：会话只认带 token 的 JSON，匿名/坏值一律空串", () => {
+  assert.equal(tokenFromSession('{"token":"t1"}'), "t1")
+  assert.equal(tokenFromSession('"t2"'), "t2")
+  assert.equal(tokenFromSession('{"token":""}'), "")
+  assert.equal(tokenFromSession("t3"), "")
+  assert.equal(tokenFromSession("not-json"), "")
+  assert.equal(tokenFromSession(null), "")
 })

@@ -104,7 +104,16 @@ Authorization: Bearer <session-token>
 
 规则（接口原文摘要）：被邀请人须是**从未注册过**的新用户，且在**从未安装过本产品的设备**上完成首次登录；被邀请人**每次充值**，邀请人得充值金额 **10%** 的 Token 奖励，经平台审核后发放；活动有效期至 **2026-12-31 23:59:59**；总量上限 9999、每日 100。当前接口同时返回 `enable: true` 与 `enableMessage: "拉新活动升级中，敬请期待！"`。
 
-**绑定只发生在网页注册**：邀请链接是 `https://www.dianclaw.cn/inviteNew?ic=<code>`。客户端 `/api/auth/login` 的请求体只有 `phone / code / udid / computerInfo / packageName / version`，**没有邀请字段**，已注册账号也无法补绑。所以插件不提供「邀请码」登录项 —— 传不进去，也不该假装能绑；需要邀请关系时只能让新用户走网页注册。
+**绑定只发生在网页注册**：邀请链接是 `https://www.dianclaw.cn/inviteNew?ic=<code>`。客户端 `/api/auth/login` 的请求体只有 `phone / code / udid / computerInfo / packageName / version`，**没有邀请字段**，已注册账号也无法补绑。
+
+因此 0.2.0 起插件改用「隔离浏览器网页登录」承接邀请（`src/web-login.mjs`）：
+
+1. 一次性 Chromium（`--user-data-dir` 为临时目录）打开 `inviteNew?ic=<code>`，无码时打开 `/login`；
+2. 用户在窗口里正常注册/登录，邀请关系由服务端在注册时绑定；
+3. 插件通过 CDP 轮询 `localStorage["dclaude.auth.session"]`，解析出 `token` 后调 `/api/v1/user/info` 验证（挡匿名/半登录态）；
+4. 成功后关窗、删临时 profile，并把本账号的邀请码写进 `~/.cache/magpie/dclaw-invite.json`（键值来自 `GET /api/v1/user/invite-new` 的 `data.inviteCode`）。
+
+邀请码只接受 `^[A-Za-z0-9]{4,32}$`，其余（含把账号 ID 当码粘贴）一律按空处理 —— 不带码比带错码安全。
 
 ### 没有「每日任务」
 

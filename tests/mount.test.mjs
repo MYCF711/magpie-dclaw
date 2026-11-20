@@ -18,7 +18,7 @@ test("九项钩子、三种独立登录和官方内嵌图标齐全", async () =>
   const plugin = await XxxAuthPlugin({ client: {} })
   assert.equal(typeof plugin.config, "function")
   assert.equal(plugin.auth.provider, "dclaw")
-  assert.equal(plugin.auth.methods.length, 3)
+  assert.equal(plugin.auth.methods.length, 4)
   for (const method of plugin.auth.methods) assert.equal(method.authorize.constructor.name, "AsyncFunction")
   assert.equal(typeof plugin.auth.refresh, "function")
   assert.equal(typeof plugin.auth.loader, "function")
@@ -31,6 +31,18 @@ test("九项钩子、三种独立登录和官方内嵌图标齐全", async () =>
   assert.ok(plugin.auth.maxConcurrency >= 1)
   assert.deepEqual((await plugin.auth.checkin()).outcome, "failed")
   assert.equal(await plugin.auth.refresh(), undefined)
+})
+
+test("网页登录的邀请开关默认开启，关闭时不问邀请码", async () => {
+  const on = await XxxAuthPlugin({ client: {} })
+  assert.equal(on.auth.options[0].key, "invite-source")
+  assert.equal(on.auth.options[0].placement, "top")
+  assert.equal(on.auth.options[0].default, true)
+  const off = await XxxAuthPlugin({ client: {}, magpie: { option: (_p, key) => (key === "invite-source" ? false : true) } })
+  assert.equal(await off.auth.methods[2].ask({}), null)
+  const onPlugin = await XxxAuthPlugin({ client: {} })
+  assert.equal(await onPlugin.auth.methods[2].ask({ invite: "" }), null)
+  assert.ok(onPlugin.auth.methods[2].prompts.length >= 1)
 })
 
 test("auth.checkin 按账号单飞，且不回放成功", () => {

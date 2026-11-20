@@ -13,6 +13,7 @@ import {
   PROVIDER_NAME,
   SDK,
   createDclawRuntime,
+  fetchInviteCode,
   fetchUserInfo,
   loginBySms,
   normalizePhone,
@@ -23,17 +24,32 @@ import {
 } from "./src/dclaw.mjs"
 import { rawCredentialOf, uidOf } from "./src/credential.mjs"
 import { createRefreshLock } from "./src/refresh-lock.mjs"
+import { createInviteStore } from "./src/invite.mjs"
+import { normalizeInviteCode, waitForWebLogin, webLoginUrl } from "./src/web-login.mjs"
 import { ICON } from "./src/icon.mjs"
 
+const INVITE_OPTION_KEY = "invite-source"
+const INVITE_PROMPT = { type: "text", key: "invite", message: "邀请码（可选）", placeholder: "留空 = 用已记住的邀请码；填 0 = 不带邀请码" }
 const SMS_PHONE_PROMPT = { type: "text", key: "phone", message: "DClaw 账号手机号", placeholder: "13800138000" }
 const SMS_CODE_PROMPT = { type: "text", key: "code", message: "短信验证码（6 位数字）", placeholder: "123456" }
 const hasOwn = (inputs, key) => Object.prototype.hasOwnProperty.call(inputs || {}, key)
 
-export async function XxxAuthPlugin() {
+export async function XxxAuthPlugin(input = {}) {
   const runtime = createDclawRuntime()
   const smsPending = new Map()
   // 签到按账号单飞：宿主重复点「立即签到」与自动签到撞车时只发一次 claim。
   const checkinLock = createRefreshLock({ replayMs: 0 })
+  const inviteStore = createInviteStore("dclaw")
+  const inviteOn = () => {
+    // 使用点实时读：拨动开关不会重跑工厂，缓存下来的值永远是旧的。
+    try { return input?.magpie?.option?.(PROVIDER, INVITE_OPTION_KEY) !== false } catch { return true }
+  }
+  const adoptInviteCode = async (token) => {
+    try {
+      const code = await fetchInviteCode(token)
+      if (code) inviteStore.write(code, { source: "account" })
+    } catch {}
+  }
 
   return {
     config(cfg) {
@@ -50,6 +66,15 @@ export async function XxxAuthPlugin() {
       provider: PROVIDER,
       icon: ICON,
       maxConcurrency: 4,
+      options: [
+        {
+          key: INVITE_OPTION_KEY,
+          label: "网页登录带我的邀请码",
+          description: "开启：网页登录优先使用已登录账号记住的邀请码，没有就问你一次；关闭：网页登录不带邀请码。",
+          default: true,
+          placement: "top",
+        },
+      ],
 
       methods: [
         {
@@ -89,6 +114,7 @@ export async function XxxAuthPlugin() {
                 try {
                   const { token, user } = await loginBySms({ phone, code, udid: pending.udid })
                   smsPending.delete(phone)
+                  await adoptInviteCode(token)
                   return successAuth(token, user)
                 } catch (error) {
                   return { type: "failed", error: error?.message || String(error) }
@@ -115,9 +141,57 @@ export async function XxxAuthPlugin() {
               async callback() {
                 try {
                   const user = await fetchUserInfo(token)
+                  await adoptInviteCode(token)
                   return successAuth(token, user, { note })
                 } catch (error) {
                   return { type: "failed", error: error?.message || String(error) }
+                }
+              },
+            }
+          },
+        },
+
+        {
+          type: "oauth",
+          label: "网页登录（隔离浏览器，可带邀请码）",
+          get prompts() { return [INVITE_PROMPT] },
+          async ask(inputs) {
+            if (!inviteOn()) return null
+            if (hasOwn(inputs, "invite")) return null
+            const current = inviteStore.read()
+            return current
+              ? { ...INVITE_PROMPT, message: `邀请码（已记住：${current}）`, placeholder: "回车沿用；填 0 不带邀请码" }
+              : INVITE_PROMPT
+          },
+          async authorize(inputs) {
+            const raw = String(inputs?.invite ?? "").trim()
+            const current = inviteOn() ? inviteStore.read() : ""
+            const invite = raw === "0" ? "" : normalizeInviteCode(raw || current)
+            const url = webLoginUrl(invite)
+            // 浏览器立刻起在后台；authorize 本身不等待用户操作。
+            const pending = waitForWebLogin({
+              url,
+              validate: async (token) => {
+                try { await fetchUserInfo(token); return true } catch { return false }
+              },
+            })
+            pending.catch(() => {})
+            return {
+              url,
+              method: "auto",
+              opened: true,
+              instructions: invite
+                ? `已在隔离浏览器打开 DClaw 邀请页（邀请码 ${invite}）。在新窗口完成注册/登录后回到这里。`
+                : "已在隔离浏览器打开 DClaw 登录页；完成登录后回到这里。",
+              async callback() {
+                try {
+                  const { token } = await pending
+                  const user = await fetchUserInfo(token)
+                  if (invite) { try { inviteStore.write(invite, { source: "chosen" }) } catch {} }
+                  else await adoptInviteCode(token)
+                  return successAuth(token, user)
+                } catch (error) {
+                  return { type: "failed", error: String(error?.message ?? error) }
                 }
               },
             }

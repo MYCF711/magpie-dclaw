@@ -45,6 +45,12 @@ DClaw 专用的域名、认证字段、模型目录与提示词注入结论来�
 - 使用范围：认证与模型协议结论、模型元数据快照、官方应用图标；未复制其专有业务代码到插件实现。
 - DClaw 名称、图标和服务权利归原厂商所有，本插件为非官方适配层。
 
+## MYCF711/magpie-monkeycode
+
+- 仓库：https://github.com/MYCF711/magpie-monkeycode
+- 许可：MIT
+- 吸收内容：`src/session-login.mjs` 的「一次性 Chromium + CDP 轮询本地会话」模式与 `src/invite-policy.mjs` 的邀请源开关形态（本仓库改写为 `src/web-login.mjs`，只读 `localStorage`，不含厂商专用码表）。
+
 ## MYCF711 自有 MIT 插件
 
 - `magpie-magicrew-auth` — https://github.com/MYCF711/magpie-magicrew-auth

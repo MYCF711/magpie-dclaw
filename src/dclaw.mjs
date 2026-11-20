@@ -323,6 +323,12 @@ export function checkinOutcomeOf(status) {
   return null
 }
 
+export async function fetchInviteCode(token, { fetchImpl = fetch } = {}) {
+  const data = await requestApi("/api/v1/user/invite-new", { token, fetchImpl })
+  const code = String(data?.data?.inviteCode || "").trim()
+  return /^[A-Za-z0-9]{4,32}$/.test(code) ? code : ""
+}
+
 export function usageFromUser(user) {
   const label = accountLabelOf(user, { mobile: ["phone", "mobile", "telephone"], email: ["email"], id: ["nickname", "username", "name"] })
   const plan = String(user?.modelMembership?.name || user?.model_membership_name || user?.model_membership_level || "普通用户")
