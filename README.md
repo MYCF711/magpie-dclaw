@@ -48,28 +48,20 @@
 
 模型调用仍消耗 DClaw 账户余额。插件不伪造免费额度，也不把会话令牌当成原生模型 Key。
 
-### 邀请码
+### 邀请码（已并入手机验证码登录）
 
-DClaw 的邀请只在**网页注册那一刻**的 URL 上生效（`/inviteNew?ic=<code>`），客户端短信登录没有邀请字段，已注册账号也补不了。所以：
+DClaw 的邀请只在**网页注册那一刻**的 URL 上生效（`/inviteNew?ic=<code>`），客户端 `/api/auth/login` 没有邀请字段，已注册账号也补不了。所以邀请做成「手机号 + 短信验证码」里的一个可选步骤：
 
-- 用「网页登录」注册新账号时，插件默认带上**已登录账号记住的邀请码**（登录过一次就会自动记住）；没有记住时会问你一次，填 `0` 表示这次不带；
-- 邀请奖励归链接里的邀请人（被邀请人每次充值，邀请人得 10% Token），与插件本身无关；
-- 缓存文件只写 `~/.cache/magpie/dclaw-invite.json`，不写 Magpie 的配置目录。
+| 开关 `invite_preferred` | 行为 |
+|---|---|
+| 关闭（默认） | 自动用**最新注册账号**的邀请码；没有账号就手动填。手机登录仍走纯 API 短信，不弹浏览器 |
+| 开启 | 登录时选择「最新账号 / 指定账号 / 手动邀请码」，选择会被记住 |
 
-### 每日签到
+选中邀请源后，这一次登录会改走隔离浏览器：打开 `inviteNew?ic=<code>`，你在窗口里完成手机号验证，插件读回会话并换 `model_api_key`；没有选中邀请源时走原生 API 短信，速度与之前一致。
 
-Magpie 会在账号那一行画「立即签到」，也可在设置里开启自动签到。插件逻辑：
-
-```text
-GET  /api/v1/user/tencent-signin/status   → eligible / canClaim / claimable / claimCount
-POST /api/v1/user/tencent-signin/claim    → 仅在 canClaim=true 时调用
-```
-
-结果按宿主契约报 `claimed` / `done` / `ineligible` / `inactive` / `failed`：今天已领也报 `claimed`（`credit` 为 0），这样宿主才会盖当天时间戳。签到奖励与次数上限由 DClaw 活动决定（当前接口给出 `maxClaims: 10`）。
-
-> 实测当前账号 `eligible=false`、`reason="非活动用户"`，所以卡片显示「该账号不符合条件」——这是账号资格问题，不是插件没实现。换一个参加活动的账号即可正常领取。
-
-DClaw 1.3.30 没有「每日任务」类接口；客户端里与任务相关的只有提醒红包（`/api/v1/client/reminder/reward/*`，需微信授权后按 `rewardRecordId` 领取）、卸载挽留奖励和邀请统计，都不属于每日任务体系，插件均未接入。
+- 邀请源账号的码来自它自己的 `GET /api/v1/user/invite-new`；每个账号登录后也会自动记住自己的码。
+- 自邀（邀请源就是本次登录的账号）、取不到码、码不是纯字母数字，都按「不带码」处理，绝不把账号 ID 拼进 URL。
+- 缓存只写 `~/.cache/magpie/`：`dclaw-preferred.json`（记住的选择）、`dclaw-invite.json`（手动码）。
 
 ## 安装
 

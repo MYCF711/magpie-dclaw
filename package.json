@@ -1,6 +1,6 @@
 {
   "name": "magpie-dclaw",
-  "version": "0.2.0",
+  "version": "0.3.0",
   "description": "DClaw 龙虾在 magpie / OpenCode 里的原生直通供应商插件：短信或 API Key 登录，直连模型网关，不启动客户端、不注入 DClaw 系统提示词（非官方）",
   "type": "module",
   "main": "./index.mjs",
