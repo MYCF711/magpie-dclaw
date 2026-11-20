@@ -3,6 +3,9 @@
 // 官方客户端链路：页面 → 26899 WebSocket → Claude Code → CLAUDE.md + 模型网关。
 // 本插件链路：magpie → /v1/messages → 模型网关。
 // 不启动/读取客户端，不写 CLAUDE.md，不注入 DClaw prompt，不改调用方消息。
+//
+// 登录只有网页一条主路：邀请码只能在注册 URL 上生效（客户端 /api/auth/login 没有邀请字段），
+// 所以不在插件里复刻短信 API 登录 —— 那样带不了邀请，等于把邀请功能做废。
 
 import {
   API_ROOT,
@@ -15,9 +18,6 @@ import {
   createDclawRuntime,
   fetchInviteCode,
   fetchUserInfo,
-  loginBySms,
-  normalizePhone,
-  sendSmsCode,
   staticModels,
   successAuth,
   MODEL_UA,
@@ -25,18 +25,13 @@ import {
 import { rawCredentialOf, uidOf } from "./src/credential.mjs"
 import { createRefreshLock } from "./src/refresh-lock.mjs"
 import { createInviteStore } from "./src/invite.mjs"
-import { createInvitePolicy, INVITE_OPTION, readInvitePreferred } from "./src/invite-policy.mjs"
+import { createInvitePolicy, INVITE_OPTION } from "./src/invite-policy.mjs"
 import { readDclawAccounts } from "./src/dclaw-accounts.mjs"
 import { waitForWebLogin, webLoginUrl } from "./src/web-login.mjs"
 import { ICON } from "./src/icon.mjs"
 
-const SMS_PHONE_PROMPT = { type: "text", key: "phone", message: "DClaw 账号手机号", placeholder: "13800138000" }
-const SMS_CODE_PROMPT = { type: "text", key: "code", message: "短信验证码（6 位数字）", placeholder: "123456" }
-const hasOwn = (inputs, key) => Object.prototype.hasOwnProperty.call(inputs || {}, key)
-
 export async function XxxAuthPlugin(input = {}) {
   const runtime = createDclawRuntime()
-  const smsPending = new Map()
   // 签到按账号单飞：宿主重复点「立即签到」与自动签到撞车时只发一次 claim。
   const checkinLock = createRefreshLock({ replayMs: 0 })
   const preferredStore = createInviteStore("dclaw-preferred")
@@ -49,15 +44,14 @@ export async function XxxAuthPlugin(input = {}) {
     preferredStore,
     codeStore,
   })
-  // 真实开关：邀请只在「开启」时参与手机验证码登录；关闭就是纯 API 短信，不走浏览器。
-  const inviteOn = () => readInvitePreferred(input, PROVIDER)
   const inviteOf = (inputs) => {
-    try { return invitePolicy.prepare(inputs)("") } catch { return { mode: "skip", code: "" } }
+    try { return invitePolicy.prepare(inputs)("") } catch { return { mode: "skip", sourceIdentity: "", code: "", reason: "prepare-failed" } }
   }
+  /** 登录成功后把本账号的邀请码记下来，供以后邀请新号时自动使用。 */
   const adoptInviteCode = async (token) => {
     try {
       const code = await fetchInviteCode(token)
-      if (code) inviteStore.write(code, { source: "account" })
+      if (code) codeStore.write(code, { source: "account" })
     } catch {}
   }
 
@@ -81,85 +75,50 @@ export async function XxxAuthPlugin(input = {}) {
       methods: [
         {
           type: "oauth",
-          label: "手机号 + 短信验证码（推荐）",
+          label: "网页登录（隔离浏览器，自动带邀请码）",
+          // ⚠ 必须非空：prompts 为空时宿主不把 ask 问到的东西传给 authorize，
+          // 而「关闭开关自动用最新账号的码」正靠 ask 阶段去取码。
           get prompts() {
             const first = invitePolicy.prompts()
-            return first.length ? first : [SMS_PHONE_PROMPT]
+            return first.length
+              ? first
+              : [{
+                  type: "text",
+                  key: "invite",
+                  message: "邀请码（可选）",
+                  placeholder: "留空 = 自动用最新账号的邀请码",
+                  placement: "top",
+                }]
           },
           async ask(inputs) {
-            // 开关开启时先问「邀请来源」（最新账号 / 指定账号 / 手动码）。
-            const invitePrompt = await invitePolicy.ask(inputs)
-            if (invitePrompt) return invitePrompt
-            // 选中了邀请源：这次注册必须走网页（API 登录不带邀请字段），不再问手机号。
-            if (inviteOn() && inviteOf(inputs).code) return null
-            if (!hasOwn(inputs, "phone")) return SMS_PHONE_PROMPT
-            if (!hasOwn(inputs, "code")) {
-              const phone = normalizePhone(inputs.phone)
-              let pending = smsPending.get(phone)
-              if (!pending || Date.now() - pending.at >= 60_000) {
-                const sent = await sendSmsCode(phone)
-                pending = { ...sent, at: Date.now() }
-                smsPending.set(phone, pending)
-              }
-              return {
-                ...SMS_CODE_PROMPT,
-                message: `验证码已发送至 ${phone.slice(0, 3)}****${phone.slice(-4)}，请输入 6 位数字`,
-              }
-            }
-            return null
+            return invitePolicy.ask(inputs)
           },
           async authorize(inputs) {
-            // ① 带邀请码：走隔离浏览器网页注册（邀请只在注册 URL 上生效）。
-            if (inviteOn()) {
-              const invite = inviteOf(inputs)
-              if (invite.code) {
-                const url = webLoginUrl(invite.code)
-                const pendingWeb = waitForWebLogin({
-                  url,
-                  validate: async (token) => {
-                    try { await fetchUserInfo(token); return true } catch { return false }
-                  },
-                })
-                pendingWeb.catch(() => {})
-                return {
-                  url,
-                  method: "auto",
-                  opened: true,
-                  instructions: `已在隔离浏览器打开带邀请码（${invite.code}）的注册页。请在新窗口完成手机号验证；完成后回到这里即可。`,
-                  async callback() {
-                    try {
-                      const { token } = await pendingWeb
-                      const user = await fetchUserInfo(token)
-                      await adoptInviteCode(token)
-                      return successAuth(token, user)
-                    } catch (error) {
-                      return { type: "failed", error: String(error?.message ?? error) }
-                    }
-                  },
-                }
-              }
-            }
-
-            // ② 不带邀请：原生 API 短信验证码。
-            let phone
-            try { phone = normalizePhone(inputs?.phone) } catch (error) {
-              return { type: "failed", error: error?.message || String(error) }
-            }
-            const pending = smsPending.get(phone)
-            const code = String(inputs?.code || "").trim()
-            if (!pending || !/^\d{6}$/.test(code)) return { type: "failed", error: "请先获取并输入 6 位短信验证码" }
+            const invite = inviteOf(inputs)
+            const url = webLoginUrl(invite.code)
+            // 浏览器立刻起在后台；authorize 本身不等待用户操作。
+            const pending = waitForWebLogin({
+              url,
+              validate: async (token) => {
+                try { await fetchUserInfo(token); return true } catch { return false }
+              },
+            })
+            pending.catch(() => {})
             return {
-              url: "",
+              url,
               method: "auto",
-              instructions: "正在验证 DClaw 短信验证码。",
+              opened: true,
+              instructions: invite.code
+                ? `已在隔离浏览器打开带邀请码（${invite.code}）的注册页。请在新窗口完成注册/登录，完成后回到这里。`
+                : "已在隔离浏览器打开 DClaw 登录页。请在新窗口完成注册/登录，完成后回到这里。",
               async callback() {
                 try {
-                  const { token, user } = await loginBySms({ phone, code, udid: pending.udid })
-                  smsPending.delete(phone)
+                  const { token } = await pending
+                  const user = await fetchUserInfo(token)
                   await adoptInviteCode(token)
                   return successAuth(token, user)
                 } catch (error) {
-                  return { type: "failed", error: error?.message || String(error) }
+                  return { type: "failed", error: String(error?.message ?? error) }
                 }
               },
             }
@@ -192,7 +151,6 @@ export async function XxxAuthPlugin(input = {}) {
             }
           },
         },
-
         {
           type: "oauth",
           label: "仅模型 API Key（完全跳过 DClaw 站点）",
@@ -232,7 +190,6 @@ export async function XxxAuthPlugin(input = {}) {
       },
 
       // 每日签到：GET /api/v1/user/tencent-signin/status → 需要时 POST /claim。
-      // 客户端把它叫「腾讯签到」；奖励是积分/元额度，账号不合格时如实报 ineligible。
       async checkin(getAuth, provider) {
         let auth
         try { auth = await getAuth() } catch { return { outcome: "failed", message: "未登录 DClaw" } }

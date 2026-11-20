@@ -33,14 +33,18 @@ test("九项钩子、三种独立登录和官方内嵌图标齐全", async () =>
   assert.equal(await plugin.auth.refresh(), undefined)
 })
 
-test("邀请开关复刻百智云：默认关闭，关闭时手机登录直接问手机号", async () => {
+test("邀请开关复刻百智云：默认关闭、文案一致、prompts 恒非空", async () => {
   const plugin = await XxxAuthPlugin({ client: {} })
-  assert.equal(plugin.auth.options[0].key, "invite_preferred")
-  assert.equal(plugin.auth.options[0].label, "首选账号作为邀请源")
-  assert.equal(plugin.auth.options[0].placement, "top")
-  assert.equal(plugin.auth.options[0].default, false)
-  const first = await plugin.auth.methods[0].ask({})
-  assert.equal(first.key, "phone")
+  const option = plugin.auth.options[0]
+  assert.equal(option.key, "invite_preferred")
+  assert.equal(option.label, "首选账号作为邀请源")
+  assert.equal(option.placement, "top")
+  assert.equal(option.default, false)
+  assert.match(option.description, /最新注册账号滚动邀请/)
+  // prompts 必须非空：为空时宿主不会把 ask 的结果交给 authorize，
+  // 而「关闭开关也自动带最新账号的码」全靠 ask 阶段取码。
+  const prompts = plugin.auth.methods[0].prompts
+  assert.ok(Array.isArray(prompts) && prompts.length >= 1)
 })
 
 test("auth.checkin 按账号单飞，且不回放成功", () => {
@@ -71,16 +75,13 @@ test("config 未登录也声明完整模型与显式模态能力", async () => {
   }
 })
 
-test("authorize 只启动流程，会话校验在 callback；SMS 用 ask 分步", async () => {
+test("粘贴令牌：authorize 只启动流程，校验在 callback", async () => {
   const plugin = await XxxAuthPlugin({ client: {} })
-  const sessionFlow = await plugin.auth.methods[1].authorize({ token: "secret-token" })
-  assert.equal(sessionFlow.method, "auto")
-  assert.equal(typeof sessionFlow.callback, "function")
-  const sms = plugin.auth.methods[0]
-  assert.deepEqual(await sms.ask({}), { type: "text", key: "phone", message: "DClaw 账号手机号", placeholder: "13800138000" })
-  const missingCode = await sms.authorize({ phone: "13800138000", code: "123456" })
-  assert.equal(missingCode.type, "failed")
-  assert.equal(typeof sms.ask, "function")
+  const flow = await plugin.auth.methods[1].authorize({ token: "secret-token" })
+  assert.equal(flow.method, "auto")
+  assert.equal(typeof flow.callback, "function")
+  const empty = await plugin.auth.methods[1].authorize({})
+  assert.equal(empty.type, "failed")
 })
 
 test("loader 未登录禁用；已登录给原生 baseURL/key/fetch 且不预先发网络请求", async () => {

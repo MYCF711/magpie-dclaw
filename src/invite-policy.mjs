@@ -170,6 +170,10 @@ export function resolveInviteSource({
     return resultFor(latest, "latest", "preferred-latest")
   }
 
+  // 关闭开关：手填的码优先（用户显式输入 > 自动推导），否则用最新账号滚动。
+  if (inviteCodeOf(manualCode)) {
+    return { mode: "manual", sourceIdentity: "", code: inviteCodeOf(manualCode), reason: "manual-code" }
+  }
   return resultFor(findLatestAccount(list), "latest", "auto-latest")
 }
 
@@ -255,6 +259,9 @@ export function createInvitePolicy({
       const raw = asked(inputs, manual.key) ? text(inputs[manual.key]) : text(codeStore?.read())
       manualCode = inviteCodeOf(raw)
       if (manualCode) codeStore?.write(manualCode, { source: "chosen" })
+    } else if (!current.preferredEnabled && asked(inputs, manual.key)) {
+      // 关闭开关但用户在手填框里给了码 → 尊重手填，不去拿账号的码。
+      manualCode = inviteCodeOf(text(inputs[manual.key]))
     }
     const codes = new Map(captured)
     return (targetIdentity = "") => resolveInviteSource({
