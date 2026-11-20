@@ -1,0 +1,11 @@
+{
+  "package": "magpie-dclaw",
+  "name": "DClaw 龙虾",
+  "providers": [
+    "dclaw"
+  ],
+  "summary": {
+    "zh": "短信或原生 API Key 登录，直连 DClaw 模型网关；无需客户端，不注入 DClaw 系统提示词。",
+    "en": "Sign in by SMS or native API key and call DClaw models directly without the desktop client or its system prompts."
+  }
+}
