@@ -95,6 +95,17 @@ Authorization: Bearer <session-token>
 
 2026-11-20 实测当前账号：`eligible=false`、`canClaim=false`、`reason="非活动用户"`、`maxClaims=10`、`claimable=20000 积分 / 1.00 元`。
 
+### 邀请机制（账户功能，插件不涉及）
+
+| 请求 | 内容 |
+|---|---|
+| `GET /api/v1/user/invite-new` | `enable`、`inviteCode`、`inviteUrl`、`inviteRules[]`、`rewardRatePercent`、`activityExpireAt`、`stats` |
+| `GET /api/v1/user/invite-new/stats` | 邀请明细分页（`page` / `pageSize`） |
+
+规则（接口原文摘要）：被邀请人须是**从未注册过**的新用户，且在**从未安装过本产品的设备**上完成首次登录；被邀请人**每次充值**，邀请人得充值金额 **10%** 的 Token 奖励，经平台审核后发放；活动有效期至 **2026-12-31 23:59:59**；总量上限 9999、每日 100。当前接口同时返回 `enable: true` 与 `enableMessage: "拉新活动升级中，敬请期待！"`。
+
+**绑定只发生在网页注册**：邀请链接是 `https://www.dianclaw.cn/inviteNew?ic=<code>`。客户端 `/api/auth/login` 的请求体只有 `phone / code / udid / computerInfo / packageName / version`，**没有邀请字段**，已注册账号也无法补绑。所以插件不提供「邀请码」登录项 —— 传不进去，也不该假装能绑；需要邀请关系时只能让新用户走网页注册。
+
 ### 没有「每日任务」
 
 前端 bundle 的全部接口中没有任务中心或每日任务端点。与「任务/奖励」沾边的只有：
