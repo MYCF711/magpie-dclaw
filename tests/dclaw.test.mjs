@@ -346,7 +346,9 @@ test("签到：非活动用户报 ineligible，不误发 claim", async () => {
   } })
   const result = await runtime.checkin({ access: "session-token", uid: "u1" })
   assert.equal(result.outcome, "ineligible")
-  assert.equal(result.message, "非活动用户")
+  assert.match(result.message, /非活动用户/)
+  assert.match(result.message, /每日赠送 1\.00 元/)
+  assert.match(result.message, /累计上限 10 次/)
   assert.equal(calls.filter((x) => x.includes("/claim")).length, 0)
 })
 

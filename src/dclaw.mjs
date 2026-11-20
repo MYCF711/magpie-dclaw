@@ -312,7 +312,19 @@ export function checkinOutcomeOf(status) {
   const claimCount = Number(status.claimCount)
   const streak = Number.isFinite(claimCount) && claimCount > 0 ? claimCount : undefined
   if (status.eligible !== true) {
-    return { outcome: "ineligible", ...(streak ? { streak } : {}), message: reason || "该账号不参与 DClaw 每日签到" }
+    // 上游只回一句「非活动用户」，对用户等于没说：把「每日赠送 1 元/天、上限 10 元」和
+    // 「名额由服务端活动名单决定」一起讲清楚，并保留上游原文便于对账。
+    const limit = Number(status.maxClaims)
+    const reward = String(status.claimable?.balance_amount_text ?? status.claimable?.balanceAmountText ?? "").trim()
+    const rules = [
+      reward ? `每日赠送 ${reward} 元` : "每日赠送余额",
+      Number.isFinite(limit) && limit > 0 ? `累计上限 ${limit} 次` : "",
+    ].filter(Boolean).join("，")
+    return {
+      outcome: "ineligible",
+      ...(streak ? { streak } : {}),
+      message: `${reason ? `服务端返回「${reason}」：` : ""}该账号不在签到活动名单内（${rules}；名额由 DClaw 活动决定，插件无法代开）`,
+    }
   }
   if (status.todayClaimed === true) {
     return { outcome: "claimed", credit: 0, ...(streak ? { streak } : {}), message: reason || "今天已签到" }
