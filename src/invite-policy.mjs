@@ -195,7 +195,9 @@ export function createInvitePolicy({
     const selection = text(selectedIdentity ?? savedIdentity)
     const sourcePrompt = buildSourcePrompt({ accounts, preferredEnabled, selectedIdentity, savedIdentity })
     const hasAccounts = sourcePrompt.type === "select"
-    const manualMode = !hasAccounts || (preferredEnabled && selection === INVITE_SOURCE_MANUAL)
+    // 开关关闭时永不问邀请：有账号就滚动用最新的，没账号就不带（与百智云的 manual 兜底区别在此，
+    // 因为我们的主登录是 API 短信，不能因为「本机还没账号」就逼用户填邀请码）。
+    const manualMode = preferredEnabled && (!hasAccounts || selection === INVITE_SOURCE_MANUAL)
     return { preferredEnabled, accounts, savedIdentity, selectedIdentity, selection, sourcePrompt, hasAccounts, manualMode }
   }
 
@@ -222,7 +224,8 @@ export function createInvitePolicy({
   }
 
   function nextPrompt(inputs, current) {
-    if (current.preferredEnabled && current.hasAccounts && !asked(inputs, INVITE_SOURCE_KEY)) return current.sourcePrompt
+    if (!current.preferredEnabled) return null
+    if (current.hasAccounts && !asked(inputs, INVITE_SOURCE_KEY)) return current.sourcePrompt
     if (!current.manualMode) return null
     if (!asked(inputs, manual.key)) return { type: "text", ...manual, placement: "top" }
     return null
